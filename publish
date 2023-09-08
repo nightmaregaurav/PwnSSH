@@ -1,0 +1,4 @@
+#!/bin/bash
+
+javac Main.java Crypto.java RootChecker.java
+jar cvfe test.jar Main Main.class Crypto.class RootChecker.class srv.enc scr.enc
